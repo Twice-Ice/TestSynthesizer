@@ -1,0 +1,6 @@
+SCREEN_X = 1080
+SCREEN_Y = 720
+FPS = 60
+BG_COLOR = (0, 0, 0)
+DEFAULT_COOLDOWN = .125
+cooldown = 0
