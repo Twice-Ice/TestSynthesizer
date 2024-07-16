@@ -48,7 +48,7 @@ while not doExit:
 
     controllerDict = {
         "Length" : playedNote.length/40,
-        "N" : playedNote.n/10,
+        "N" : .1,
         "Tension" : playedNote.tension/20,
         "String Density" : playedNote.linearDensity/50,
         "Duration" : playedNote.duration/10,
