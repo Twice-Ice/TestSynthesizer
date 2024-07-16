@@ -38,7 +38,7 @@ class Note:
 
         self.frames = int(self.duration * self.samplingRate) # total instances to account for
 
-        rawWave = np.cos(2 * np.pi * self.frequency * np.linspace(0, self.duration, self.frames)) # raw waveform
+        rawWave = np.cos(2 * np.pi * self.getFrequency() * np.linspace(0, self.duration, self.frames)) # raw waveform
         rawWave *= np.linspace(1, 0, self.frames) # basic linear fade
 
         timeFrame = np.linspace(0, self.duration, self.frames) # the time at i index for all frames
@@ -47,6 +47,9 @@ class Note:
 
         stereoWave = np.asarray([self.wave, self.wave]).T # creates an array that is transposed along the y axis, self.wave is only one channel whereas this is stereo (two channels)
         self.sound = pygame.sndarray.make_sound(stereoWave.copy())
+
+    def getFrequency(self):
+        return self.frequency
 
     def playSound(self):
         #if the sound exists, then instead of stacking another sound into the played audio, it stops and only plays the one sound.
@@ -126,3 +129,43 @@ class Note:
         self.userInput(keys)
         self.drawFullWave(screen)
         self.drawMovingWave(screen)
+
+class StringNote(Note):
+    def __init__(self,
+                 samplingRate : int = 44100,
+                 duration : float = 1.5,
+                 length : float = 10,
+                 n : float = 1,
+                 tension : float = 345.23,
+                 stringDensity : float = 5.1,
+                 strength : float = 1,
+                 harmonics : list = None,
+                 lineColor : tuple = (0, 0, 255),
+                 circleColor : tuple = (255, 255, 255),
+                 drawMode : str = "Lines"):
+        self.length = length
+        self.n = n
+        self.tension = tension
+        self.stringDensity = stringDensity # the linear density of the string
+        self.strength = strength
+
+        if harmonics == None:
+            harmonicsLen = 26
+            self.harmonics = [(.5 * (random.randint(0, 100)/100)) * (abs((i-(harmonicsLen/2))/(harmonicsLen))) if i % 2 == 0 else 0 for i in range(harmonicsLen)]
+			# self.harmonics = [1 * (abs((i-(len/2))/(len))) if i % 2 == 0 else 0 for i in range(len)]
+			# self.harmonics = [random.randint(0, 100)/100 for i in range(3)]
+			# self.harmonics = .75 * np.cos(25 * np.linspace(0, 1, 500))
+        else:
+            self.harmonics = harmonics
+
+        super().__init__(
+            samplingRate,
+            self.getFrequency(),
+            duration,
+            lineColor,
+            circleColor,
+            drawMode
+        )
+
+    def getFrequency(self):
+        return ((2*self.length/self.n))*math.sqrt(self.tension/self.stringDensity)

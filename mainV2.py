@@ -1,7 +1,7 @@
 import pygame
 import globals as gb
 
-from notesV2 import Note
+from notesV2 import Note, StringNote
 
 pygame.init()
 pygame.font.init()
@@ -13,7 +13,7 @@ font = pygame.font.SysFont("Arial", 15)
 
 doExit = False
 
-note = Note(drawMode="Circles")
+note = StringNote(drawMode="Lines")
 
 while not doExit:
     delta = (clock.tick(gb.FPS) / 1000)

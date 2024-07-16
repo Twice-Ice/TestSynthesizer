@@ -11,3 +11,8 @@ def updateCooldown(delta):
         cooldown -= delta
     elif cooldown < 0:
         cooldown = 0
+
+def halfRound(val : float, n_digits : int = 0):
+    val *= 10 ** n_digits
+    result = int(val + (0.50002 if val >= 0 else -0.50002))
+    return result / 10 ** n_digits
