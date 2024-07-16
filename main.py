@@ -9,18 +9,25 @@ pygame.init()
 pygame.font.init()
 pygame.mixer.init()
 
-screen = pygame.display.set_mode((gb.SCREEN_X, gb.SCREEN_Y))
+screen = pygame.display.set_mode((gb.SCREEN_X, gb.SCREEN_Y), pygame.RESIZABLE)
 clock = pygame.time.Clock()
 
 doExit = False
 
-playedNote = stringNote()
+playedNote = None
+
+def redoNote():
+    return stringNote(harmonics=[0,.5,1], strength=.1)
+
+playedNote = redoNote()
 
 ticker = 0
 
 controllerState = "Tension"
 
 font = pygame.font.SysFont("Arial", 15)
+
+# pygame.display.toggle_fullscreen()
 
 while not doExit:
     delta = (clock.tick(gb.FPS) / 1000)
@@ -40,11 +47,12 @@ while not doExit:
     keys = pygame.key.get_pressed()
 
     controllerDict = {
-        "Length" : .25,
-        "N" : .1,
+        "Length" : playedNote.length/40,
+        "N" : playedNote.n/10,
         "Tension" : playedNote.tension/20,
-        "String Density" : .1,
-        "Duration" : playedNote.duration/10
+        "String Density" : playedNote.linearDensity/50,
+        "Duration" : playedNote.duration/10,
+        "Force" : .1
     }
 
     if gb.cooldown == 0:
@@ -62,11 +70,17 @@ while not doExit:
             controllerState = "String Density"
         elif keys[pygame.K_d]:
             controllerState = "Duration"
+        elif keys[pygame.K_f]:
+            controllerState = "Force"
 
         if keys[pygame.K_r]:
-            playedNote = stringNote()
+            gb.cooldown += gb.DEFAULT_COOLDOWN
+            if playedNote.sound != None:
+                playedNote.sound.stop()
+            playedNote = redoNote()
 
         if keys[pygame.K_e]:
+            gb.cooldown += gb.DEFAULT_COOLDOWN
             playedNote.sound.stop()
         
         if keys[pygame.K_UP]:
@@ -86,6 +100,8 @@ while not doExit:
                     playedNote.duration += controllerDict[controllerState]
                     if playedNote.sound != None:
                         playedNote.sound.stop()
+                case "Force":
+                    playedNote.strength += controllerDict[controllerState]
         if keys[pygame.K_DOWN]:
             gb.cooldown += gb.DEFAULT_COOLDOWN
 
@@ -102,6 +118,8 @@ while not doExit:
                     playedNote.duration -= controllerDict[controllerState]
                     if playedNote.sound != None:
                         playedNote.sound.stop()
+                case "Force":
+                    playedNote.strength -= controllerDict[controllerState]
     
     playedNote.drawFullWave(screen)
     playedNote.drawMovingWave(screen)

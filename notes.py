@@ -38,21 +38,32 @@ class stringNote(note):
 				 n : float = 1,
 				 tension : float = 345.23,
 				 linearDensity : float = 5.1,
-				 duration : float = 2):
+				 duration : float = 2,
+				 strength : float = 1,
+				 harmonics : list = None):
 		self.length = length
 		self.n = n
 		self.tension = tension
 		self.linearDensity = linearDensity
 		self.duration = duration
-		self.harmonics = [.5 * self.halfRound(random.randint(0, 100)/100) for i in range(5)]
-		# self.harmonics = [random.randint(0, 100)/100 for i in range(3)]
-		# self.harmonics = .75 * np.cos(25 * np.linspace(0, 1, 500))
+		self.strength = strength
+			
+		if harmonics == None:
+			harmonicsLen = 26
+			self.harmonics = [(.5 * (random.randint(0, 100)/100)) * (abs((i-(harmonicsLen/2))/(harmonicsLen))) if i % 2 == 0 else 0 for i in range(harmonicsLen)]
+			# self.harmonics = [1 * (abs((i-(len/2))/(len))) if i % 2 == 0 else 0 for i in range(len)]
+			# self.harmonics = [random.randint(0, 100)/100 for i in range(3)]
+			# self.harmonics = .75 * np.cos(25 * np.linspace(0, 1, 500))
+		else:
+			self.harmonics = harmonics
+		
+		print(self.harmonics)
 
 		self.printStats()
 		
 		super().__init__(
 			frequency = ((2*self.length/self.n))*math.sqrt(self.tension/self.linearDensity),
-			duration = self.duration
+			duration = self.duration,
 		)
 
 		self.wave = np.linspace(0, self.duration, self.frames)
@@ -75,6 +86,11 @@ class stringNote(note):
 		t = np.linspace(0, self.duration, self.frames)
 		# harmonics = np.linspace(1, 0, 100)
 		harmonics = self.harmonics
+		maxHarmonicVal = max(harmonics)
+		for i in range(len(harmonics)):
+			if harmonics[i]/maxHarmonicVal > self.strength:
+				harmonics[i] = self.strength * maxHarmonicVal
+
 		self.wave = np.zeros_like(t)
 
 		for i, amplitude in enumerate(harmonics):
@@ -95,7 +111,8 @@ class stringNote(note):
 		baseStatsStr += f"N : {self.n}\n"
 		baseStatsStr += f"Tension : {self.tension}\n"
 		baseStatsStr += f"String Density : {self.linearDensity}\n"
-		baseStatsStr += f"Duration : {self.duration}\n\n"
+		baseStatsStr += f"Duration : {self.duration}\n"
+		baseStatsStr += f"Force : {self.strength}\n\n"
 
 		return baseStatsStr
 	
@@ -109,16 +126,21 @@ class stringNote(note):
 		return statsStr
 	
 	def drawFullWave(self, screen):
+		screenSize = pygame.math.Vector2(pygame.display.get_window_size())
+		offsetScaling = screenSize.y/6
 		# Normalize wave to fit within the screen height
-		reducedWave = self.wave[::int((self.frames)/gb.SCREEN_X)]
-		normalized_wave = reducedWave / np.max(np.abs(reducedWave)) * 150  # Adjust the multiplier for appropriate scaling
-		x = np.linspace(0, gb.SCREEN_X, len(reducedWave))
-		y = gb.SCREEN_Y - (150*3) + normalized_wave
+		reducedWave = self.wave[::int((self.frames)/screenSize.x)]
+		normalized_wave = reducedWave / np.max(np.abs(reducedWave)) * offsetScaling  # Adjust the multiplier for appropriate scaling
+		x = np.linspace(0, screenSize.x, len(reducedWave))
+		y = screenSize.y - (offsetScaling*3) + normalized_wave
 
 		for i in range(1, len(x)):
 			pygame.draw.line(screen, (0, 0, 255), (x[i-1], y[i-1]), (x[i], y[i]))
 
 	def drawMovingWave(self, screen):
+		screenSize = pygame.math.Vector2(pygame.display.get_window_size())
+		offsetScaling = screenSize.y/6
+
 		if self.start_time is None:
 			return
 
@@ -132,9 +154,9 @@ class stringNote(note):
 		end_frame = min(self.frames, current_frame + int(self.samplingRate * elapsed_time))
 
 		# Normalize wave to fit within the screen height
-		normalized_wave = self.wave[start_frame:end_frame] / np.max(np.abs(self.wave)) * 150  # Adjust the multiplier for appropriate scaling
-		x = np.linspace(0, gb.SCREEN_X, end_frame - start_frame)
-		y = gb.SCREEN_Y - 150 + normalized_wave
+		normalized_wave = self.wave[start_frame:end_frame] / np.max(np.abs(self.wave)) * offsetScaling  # Adjust the multiplier for appropriate scaling
+		x = np.linspace(0, screenSize.x, end_frame - start_frame)
+		y = screenSize.y - offsetScaling + normalized_wave
 
 		# Draw the wave segment
 		for i in range(1, len(x)):
