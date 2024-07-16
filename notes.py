@@ -85,7 +85,7 @@ class stringNote(note):
 
 		t = np.linspace(0, self.duration, self.frames)
 		# harmonics = np.linspace(1, 0, 100)
-		harmonics = self.harmonics
+		harmonics = self.harmonics.copy()
 		maxHarmonicVal = max(harmonics)
 		for i in range(len(harmonics)):
 			if harmonics[i]/maxHarmonicVal > self.strength:
