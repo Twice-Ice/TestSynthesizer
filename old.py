@@ -171,7 +171,8 @@ class manualStringNote(note):
         case = question("Choose one: [Length, N, Tension, String Density, Duration]\n", dict, options, clearScreen = False)
 
         self.printStats()
-
+        
+        #!!!!! HERE
         setattr(self, options[case], question(f"{case}?\n", float, clearScreen = False))
         self.frequency = ((2*self.length/self.n))*math.sqrt(self.tension/self.linearDensity)
         
