@@ -1,5 +1,6 @@
 import pygame
 import globals as gb
+import random
 
 from notesV2 import Note, StringNote
 
@@ -13,7 +14,7 @@ font = pygame.font.SysFont("Arial", 15)
 
 doExit = False
 
-note = StringNote(drawMode="Lines")
+note = StringNote(drawMode="Lines", lineStartColor = (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)), lineEndColor = (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)))
 
 while not doExit:
     delta = (clock.tick(gb.FPS) / 1000)

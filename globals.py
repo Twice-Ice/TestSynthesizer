@@ -35,3 +35,22 @@ def inverseOpp(operation : str):
 def cammelCase(string : str):
     string = string.replace(" ", "")
     return string[0:1].lower() + string[1:]
+
+'''
+- color
+- minColor
+- maxColor
+
+caps the color values of color to minColor and maxColor values.
+'''
+def capColor(color : tuple, minColor : tuple = (0, 0, 0), maxColor : tuple = (255, 255, 255)):
+    cappedColor = [0, 0, 0]
+    for i in range(3):
+        if color[i] < minColor[i]:
+            cappedColor[i] = (minColor[i])
+        elif color[i] > maxColor[i]:
+            cappedColor[i] = (maxColor[i])
+        else:
+            cappedColor[i] = (color[i])
+
+    return (cappedColor[0], cappedColor[1], cappedColor[2])

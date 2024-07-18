@@ -16,16 +16,18 @@ class Note:
                  samplingRate : int = 44100,
                  frequency : float = 440,
                  duration : float = 1.5,
-                 lineColor : tuple = (0, 0, 255),
+                 lineStartColor : tuple = (50, 50, 255),
+                 lineEndColor : tuple = (50, 255, 0),
                  circleColor : tuple = (255, 255, 255),
                  drawMode : str = "Lines"):
         
         self.samplingRate = samplingRate
         self.frequency = frequency
         self.duration = duration
-        self.drawMode = drawMode
-        self.lineColor = lineColor
+        self.lineStartColor = lineStartColor
+        self.lineEndColor = lineEndColor
         self.circleColor = circleColor
+        self.drawMode = drawMode
 
         self.frames = int(self.duration * self.samplingRate)
         self.sound = None
@@ -37,6 +39,12 @@ class Note:
         self.stateSettings = [
             ["Frequency", pygame.K_f, 1.1, "*"],
             ["Duration", pygame.K_d, 1.1, "*"]
+        ]
+
+        self.drawModes = [
+            "Lines",
+            "Circles",
+            "Both"
         ]
 
         self.baseValues = None
@@ -136,12 +144,12 @@ class Note:
         x = np.linspace(0, screenSize.x, relEndFrame - relStartFrame)
         y = screenSize.y - offset + normalizedWave
 
-        self.drawArray(x, y, screen)
+        self.drawArray(x, y, screen, startPercent=relStartFrame/self.frames, endPercent=relEndFrame/self.frames)
 
         #updates the last drawn index
         self.lastDrawnIndex = relEndFrame
 
-    def drawArray(self, x : np.array, y : np.array, screen):
+    def drawArray(self, x : np.array, y : np.array, screen, startPercent : float = 0, endPercent : float = 1):
         """
             ## drawArray
             renders an array of x and y positions to the screen, the way they are rendered depending on self.drawMode.
@@ -151,14 +159,28 @@ class Note:
             
             ### y : np.array
             the y positions
+
+            ### screen : pygame.display
+            screen to draw to
+
+            ### startPercent : float
+            staring percent to use when rendering the line colors
+            defaults to 0
+
+            ### endPercent : float
+            ending percent to use when rendering the line colors
+            defaults to 1
         """
-        for i in range(1, len(x)):
+        length = len(x)
+        for i in range(1, length):
+            percent = startPercent + ((endPercent - startPercent) * i/length)
+            color = gb.capColor(((self.lineEndColor[0] - self.lineStartColor[0]) * percent + self.lineStartColor[0], (self.lineEndColor[1] - self.lineStartColor[1]) * percent + self.lineStartColor[1], (self.lineEndColor[2] - self.lineStartColor[2]) * percent + self.lineStartColor[2]))
             if self.drawMode == "Lines":
-                pygame.draw.line(screen, self.lineColor, (x[i-1], y[i-1]), (x[i], y[i]))
+                pygame.draw.line(screen, color, (x[i-1], y[i-1]), (x[i], y[i]))
             elif self.drawMode == "Circles":
                 pygame.draw.circle(screen, self.circleColor, (x[i], y[i]), 1)
             elif self.drawMode == "Both":
-                pygame.draw.line(screen, self.lineColor, (x[i-1], y[i-1]), (x[i], y[i]))
+                pygame.draw.line(screen, color, (x[i-1], y[i-1]), (x[i], y[i]))
                 pygame.draw.circle(screen, self.circleColor, (x[i], y[i]), 1)
             else:
                 raise NameError(f"self.drawMode ({self.drawMode}) is not a valid draw mode.")
@@ -171,6 +193,14 @@ class Note:
 
             if keys[pygame.K_r]: #reset
                 self.resetButton()
+
+            drawIndex = self.drawModes.index(self.drawMode)
+            if keys[pygame.K_RIGHT]:
+                gb.cooldown += gb.DEFAULT_COOLDOWN
+                self.drawMode = self.drawModes[drawIndex + 1 if drawIndex + 1 < len(self.drawModes) else 0]
+            if keys[pygame.K_LEFT]:
+                gb.cooldown += gb.DEFAULT_COOLDOWN
+                self.drawMode = self.drawModes[drawIndex - 1 if drawIndex - 1 >= 0 else len(self.drawModes) - 1]
 
             for instance in self.stateSettings:
                 name = instance[0]
@@ -245,7 +275,8 @@ class StringNote(Note):
                  weight : float = 5.1,
                  strength : float = 1,
                  harmonics : list = None,
-                 lineColor : tuple = (0, 0, 255),
+                 lineStartColor : tuple = (50, 50, 255),
+                 lineEndColor : tuple = (50, 255, 0),
                  circleColor : tuple = (255, 255, 255),
                  drawMode : str = "Lines"):
        
@@ -261,12 +292,13 @@ class StringNote(Note):
             self.harmonics = harmonics
 
         super().__init__(
-            samplingRate,
-            self.getFrequency(),
-            duration,
-            lineColor,
-            circleColor,
-            drawMode
+            samplingRate = samplingRate,
+            frequency = self.getFrequency(),
+            duration = duration,
+            circleColor = circleColor,
+            lineStartColor = lineStartColor,
+            lineEndColor = lineEndColor,
+            drawMode = drawMode
         )
 
         self.stateSettings = [
@@ -322,3 +354,5 @@ class StringNote(Note):
         super().resetButton()
         self.setHarmonics()
         self.makeSound()
+        self.lineStartColor = (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
+        self.lineEndColor = (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
