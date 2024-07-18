@@ -1,166 +1,358 @@
 import numpy as np
 import pygame
-import os
 import math
 import globals as gb
 import time
 import random
+from text import Text
 
-class note:
-	def __init__(self, samplingRate : int = 44100, frequency : float = 440, duration : float = 1.5):
-		self.samplingRate = samplingRate
-		self.frequency = frequency
-		self.duration = duration
-		self.sound = None
-		self.frames = int(self.duration * self.samplingRate)
-		self.start_time = None
-		self.last_drawn_index = 0
-	
-	def makeSound(self):
-		self.frames = int(self.duration * self.samplingRate)
-		
-		arr = np.cos(2*np.pi*self.frequency*np.linspace(0, self.duration, self.frames))*np.linspace(1, 0, self.frames) #np.linspace(start, stop, # of samples)
-		
-		self.sound = np.asarray([32767*arr,32767*arr]).T.astype(np.int16)
-		self.sound = pygame.sndarray.make_sound(self.sound.copy())
-		
-	def playSound(self):
-		if self.sound != None:
-			self.sound.stop()
-		self.makeSound()
-		self.sound.play()
-		self.start_time = time.time()
-		self.last_drawn_index = 0
+#Mwroc Camp
 
-class stringNote(note):
-	def __init__(self, 
-				 length : float = 10,
-				 n : float = 1,
-				 tension : float = 345.23,
-				 linearDensity : float = 5.1,
-				 duration : float = 2,
-				 strength : float = 1,
-				 harmonics : list = None):
-		self.length = length
-		self.n = n
-		self.tension = tension
-		self.linearDensity = linearDensity
-		self.duration = duration
-		self.strength = strength
-			
-		if harmonics == None:
-			harmonicsLen = 26
-			self.harmonics = [(.5 * (random.randint(0, 100)/100)) * (abs((i-(harmonicsLen/2))/(harmonicsLen))) if i % 2 == 0 else 0 for i in range(harmonicsLen)]
-			# self.harmonics = [1 * (abs((i-(len/2))/(len))) if i % 2 == 0 else 0 for i in range(len)]
-			# self.harmonics = [random.randint(0, 100)/100 for i in range(3)]
-			# self.harmonics = .75 * np.cos(25 * np.linspace(0, 1, 500))
-		else:
-			self.harmonics = harmonics
-		
-		print(self.harmonics)
+pygame.init()
+pygame.mixer.init()
 
-		self.printStats()
-		
-		super().__init__(
-			frequency = ((2*self.length/self.n))*math.sqrt(self.tension/self.linearDensity),
-			duration = self.duration,
-		)
+class Note:
+    def __init__(self, 
+                 samplingRate : int = 44100,
+                 frequency : float = 440,
+                 duration : float = 1.5,
+                 lineStartColor : tuple = (50, 50, 255),
+                 lineEndColor : tuple = (50, 255, 0),
+                 circleColor : tuple = (255, 255, 255),
+                 drawMode : str = "Lines"):
+        
+        self.samplingRate = samplingRate
+        self.frequency = frequency
+        self.duration = duration
+        self.lineStartColor = lineStartColor
+        self.lineEndColor = lineEndColor
+        self.circleColor = circleColor
+        self.drawMode = drawMode
 
-		self.wave = np.linspace(0, self.duration, self.frames)
+        self.frames = int(self.duration * self.samplingRate)
+        self.sound = None
+        self.wave = None
+        self.startTime = None
+        self.text = Text((10, 10), True)
+        self.controllerState = "Weight"
 
-	"""
-		A half round function with n_digits after the decimal being able to be the last digit.
+        self.stateSettings = [
+            ["Frequency", pygame.K_f, 1.1, "*"],
+            ["Duration", pygame.K_d, 1.1, "*"]
+        ]
 
-		copy and pasted from codequest notes bcs I'm lazy :)
-	"""
-	def halfRound(self, val:float, n_digits:int = 0):
-		val *= 10**n_digits
-		result = int(val + (0.50002 if val >= 0 else -0.50002))
-		return result / 10**n_digits
+        self.drawModes = [
+            "Lines",
+            "Circles",
+            "Both"
+        ]
 
-	def makeSound(self):
-		self.frequency = ((2*self.length/self.n))*math.sqrt(self.tension/self.linearDensity)
+        self.baseValues = None
+        self.setBaseValues()
 
-		self.frames = int(self.duration * self.samplingRate)
+    #MISC
+    def setBaseValues(self):
+        self.baseValues = [[self.stateSettings[i][0], getattr(self, gb.cammelCase(self.stateSettings[i][0]))] for i in range(len(self.stateSettings))]
 
-		t = np.linspace(0, self.duration, self.frames)
-		# harmonics = np.linspace(1, 0, 100)
-		harmonics = self.harmonics.copy()
-		maxHarmonicVal = max(harmonics)
-		for i in range(len(harmonics)):
-			if harmonics[i]/maxHarmonicVal > self.strength:
-				harmonics[i] = self.strength * maxHarmonicVal
+    #SOUND
+    def makeSound(self):
+        """
+            ## makeSound()
+            Generates the sound wave of the selected note instance
+        """
 
-		self.wave = np.zeros_like(t)
+        self.frames = int(self.duration * self.samplingRate) # total instances to account for
 
-		for i, amplitude in enumerate(harmonics):
-			harmonic_freq = self.frequency * (i + 1)
-			self.wave += amplitude * np.sin(2 * np.pi * harmonic_freq * t)
-		
-		decay = np.exp(-3 * t)  # Exponential decay
-		self.wave *= decay
+        rawWave = np.cos(2 * np.pi * self.getFrequency() * np.linspace(0, self.duration, self.frames)) # raw waveform
+        rawWave *= np.linspace(1, 0, self.frames) # basic linear fade
 
-		self.wave = (32767 * self.wave).astype(np.int16)
-		stereo_wave = np.asarray([self.wave, self.wave]).T
-		self.sound = pygame.sndarray.make_sound(stereo_wave.copy())
+        self.wave = rawWave # sets self.wave to the actual generated wave
+        self.wave = (32768 * self.wave).astype(np.int16) # maps the wave to audio min max of a 16 bit int (32768)
 
-	def printBaseStats(self):
-		baseStatsStr = ""
-		# os.system("cls")
-		baseStatsStr += f"Length : {self.length}\n"
-		baseStatsStr += f"N : {self.n}\n"
-		baseStatsStr += f"Tension : {self.tension}\n"
-		baseStatsStr += f"String Density : {self.linearDensity}\n"
-		baseStatsStr += f"Duration : {self.duration}\n"
-		baseStatsStr += f"Force : {self.strength}\n\n"
+        stereoWave = np.asarray([self.wave, self.wave]).T # creates an array that is transposed along the y axis, self.wave is only one channel whereas this is stereo (two channels)
+        self.sound = pygame.sndarray.make_sound(stereoWave.copy())
 
-		return baseStatsStr
-	
-	def printStats(self):
-		statsStr = self.printBaseStats()
+    def getFrequency(self):
+        return self.frequency
 
-		statsStr += f"String Length: {((2*self.length)/self.n)}        = (2*{self.length}/{self.n})\n"
-		statsStr += f"Base Frequency: {math.sqrt(self.tension/self.linearDensity)}        = sqrt({self.tension}/{self.linearDensity})\n"
-		statsStr += f"Frequency: {((2*self.length)/self.n)*math.sqrt(self.tension/self.linearDensity)}        = {((2*self.length)/self.n)}*{math.sqrt(self.tension/self.linearDensity)}\n"
+    def playSound(self):
+        #if the sound exists, then instead of stacking another sound into the played audio, it stops and only plays the one sound.
+        if self.sound != None:
+            self.sound.stop()
 
-		return statsStr
-	
-	def drawFullWave(self, screen):
-		screenSize = pygame.math.Vector2(pygame.display.get_window_size())
-		offsetScaling = screenSize.y/6
-		# Normalize wave to fit within the screen height
-		reducedWave = self.wave[::int((self.frames)/screenSize.x)]
-		normalized_wave = reducedWave / np.max(np.abs(reducedWave)) * offsetScaling  # Adjust the multiplier for appropriate scaling
-		x = np.linspace(0, screenSize.x, len(reducedWave))
-		y = screenSize.y - (offsetScaling*3) + normalized_wave
+        #makes and plays the sound.
+        self.makeSound()
+        self.sound.play()
+        
+        #updates relevant rendering variables
+        self.startTime = time.time()
+        self.lastDrawnIndex = 0
 
-		for i in range(1, len(x)):
-			pygame.draw.line(screen, (0, 0, 255), (x[i-1], y[i-1]), (x[i], y[i]))
+    #WAVE GRAPHICS
+    def drawFullWave(self, screen : pygame.display):
+        """
+            ## drawFullWave
+            draws the sound wave being played all at once to the screen. The waveform's resolution is durastically reduced for performace reasons.
 
-	def drawMovingWave(self, screen):
-		screenSize = pygame.math.Vector2(pygame.display.get_window_size())
-		offsetScaling = screenSize.y/6
+            ### screen : pygame.display
+            the screen to draw to
+        """
+        if self.sound == None: # doesn't draw if there isn't a sound hasn't been played yet
+            return
 
-		if self.start_time is None:
-			return
+        screenSize = pygame.math.Vector2(pygame.display.get_window_size()) # for scaling purposes
+        offset = screenSize.y/6 # Normalizes offsets to relative screen size
+        reducedWave = self.wave[::int(math.ceil(self.frames/screenSize.x))] # Reduce the amount of drawn instances to the width of the screen in pixels
 
-		elapsed_time = time.time() - self.start_time
-		if elapsed_time > self.duration:
-			elapsed_time = self.duration
+        normalizedWave = reducedWave / np.max(np.abs(reducedWave)) * offset # Normalizes the min and max values of the wave (visually) to that of 1x the offset scale.
+        #relative positioning lists for each instance
+        x = np.linspace(0, screenSize.x, len(reducedWave))
+        y = screenSize.y - (offset * 3) + normalizedWave
 
-		# Calculate the number of frames to display based on elapsed time
-		current_frame = int((elapsed_time / self.duration) * self.frames)
-		start_frame = max(self.last_drawn_index, current_frame - int(self.samplingRate * elapsed_time))
-		end_frame = min(self.frames, current_frame + int(self.samplingRate * elapsed_time))
+        self.drawArray(x, y, screen)
 
-		# Normalize wave to fit within the screen height
-		normalized_wave = self.wave[start_frame:end_frame] / np.max(np.abs(self.wave)) * offsetScaling  # Adjust the multiplier for appropriate scaling
-		x = np.linspace(0, screenSize.x, end_frame - start_frame)
-		y = screenSize.y - offsetScaling + normalized_wave
+    def drawMovingWave(self, screen : pygame.display):
+        """
+            ## drawMovingWave
+            draws the sound wave being played for each chunk of sound that was played over the time that it took to render the last frame.
 
-		# Draw the wave segment
-		for i in range(1, len(x)):
-			pygame.draw.line(screen, (0, 0, 255), (x[i-1], y[i-1]), (x[i], y[i]))
+            ### screen : pygame.display
+            the screen to draw to
+        """
+        screenSize = pygame.math.Vector2(pygame.display.get_window_size()) #for scaling purposes
+        offset = screenSize.y/6 # Normalizes offsets to relative screen size
 
-		# Update the last drawn index
-		self.last_drawn_index = end_frame
+        #if the audio isn't being played then it shouldn't render.
+        if self.startTime == None:
+            return
+        
+        elapsedTime = time.time() - self.startTime
+        if elapsedTime > self.duration: # prevents calling from a range that isn't there and limits to only the frames within the duration.
+            elapsedTime = self.duration
+
+        # determines the relative end frame and relative start frame based on the time that has passed. It also detemines the current frame within the sequence of self.frames (not actual frames, instead wave indexes)
+        currentFrame = int((elapsedTime / self.duration) * self.frames)
+        relStartFrame = max(self.lastDrawnIndex, currentFrame - int(self.samplingRate * elapsedTime))
+        relEndFrame = min(self.frames, currentFrame + int(self.samplingRate * elapsedTime))
+
+        if relEndFrame - relStartFrame <= 0: #this equation would return a negative value occasionally when editing values, so it returns if that is the case.
+            return
+
+        #normalizes the wave size to that -1, 1. Then multiplies by the offset value to be evenly spaced.
+        normalizedWave = self.wave[relStartFrame:relEndFrame] / np.max(np.abs(self.wave)) * offset
+        #gets the x and y lists for rendering
+        x = np.linspace(0, screenSize.x, relEndFrame - relStartFrame)
+        y = screenSize.y - offset + normalizedWave
+
+        self.drawArray(x, y, screen, startPercent=relStartFrame/self.frames, endPercent=relEndFrame/self.frames)
+
+        #updates the last drawn index
+        self.lastDrawnIndex = relEndFrame
+
+    def drawArray(self, x : np.array, y : np.array, screen, startPercent : float = 0, endPercent : float = 1):
+        """
+            ## drawArray
+            renders an array of x and y positions to the screen, the way they are rendered depending on self.drawMode.
+
+            ### x : np.array
+            the x positions
+            
+            ### y : np.array
+            the y positions
+
+            ### screen : pygame.display
+            screen to draw to
+
+            ### startPercent : float
+            staring percent to use when rendering the line colors
+            defaults to 0
+
+            ### endPercent : float
+            ending percent to use when rendering the line colors
+            defaults to 1
+        """
+        length = len(x)
+        for i in range(1, length):
+            percent = startPercent + ((endPercent - startPercent) * i/length)
+            color = gb.capColor(((self.lineEndColor[0] - self.lineStartColor[0]) * percent + self.lineStartColor[0], (self.lineEndColor[1] - self.lineStartColor[1]) * percent + self.lineStartColor[1], (self.lineEndColor[2] - self.lineStartColor[2]) * percent + self.lineStartColor[2]))
+            if self.drawMode == "Lines":
+                pygame.draw.line(screen, color, (x[i-1], y[i-1]), (x[i], y[i]))
+            elif self.drawMode == "Circles":
+                pygame.draw.circle(screen, self.circleColor, (x[i], y[i]), 1)
+            elif self.drawMode == "Both":
+                pygame.draw.line(screen, color, (x[i-1], y[i-1]), (x[i], y[i]))
+                pygame.draw.circle(screen, self.circleColor, (x[i], y[i]), 1)
+            else:
+                raise NameError(f"self.drawMode ({self.drawMode}) is not a valid draw mode.")
+
+    #USER INPUT
+    def userInput(self, keys):
+        if gb.cooldown == 0:
+            if keys[pygame.K_p]: #play sound
+                self.playButton()
+
+            if keys[pygame.K_r]: #reset
+                self.resetButton()
+
+            drawIndex = self.drawModes.index(self.drawMode)
+            if keys[pygame.K_RIGHT]:
+                gb.cooldown += gb.DEFAULT_COOLDOWN
+                self.drawMode = self.drawModes[drawIndex + 1 if drawIndex + 1 < len(self.drawModes) else 0]
+            if keys[pygame.K_LEFT]:
+                gb.cooldown += gb.DEFAULT_COOLDOWN
+                self.drawMode = self.drawModes[drawIndex - 1 if drawIndex - 1 >= 0 else len(self.drawModes) - 1]
+
+            for instance in self.stateSettings:
+                name = instance[0]
+                convertedName = gb.cammelCase(name) #cammelCase version of the name string for use with setattr() and getattr()
+
+                key = instance[1]
+                valueChange = instance[2]
+                operation = instance[3]
+
+                if keys[key]: #if the pressed key is in self.stateSettings then the controllerState is set to the state associated with that key.
+                    self.controllerState = name
+                
+                if name == self.controllerState:
+                    if keys[pygame.K_UP]:
+                        gb.cooldown += gb.DEFAULT_COOLDOWN
+                        # Sets the attribute {convertedName} which is just {name} but formated to "cammelCasing" and it's given the value of itself + or * the value change. 
+                        # These are determined in self.stateSettings in the init.
+                        setattr(self, convertedName, eval(f"{getattr(self, convertedName)} {operation} {valueChange}"))
+                        self.makeSound()
+                    if keys[pygame.K_DOWN]:
+                        gb.cooldown += gb.DEFAULT_COOLDOWN
+                        setattr(self, convertedName, eval(f"{getattr(self, convertedName)} {gb.inverseOpp(operation)} {valueChange}"))
+                        self.makeSound()
+
+    def playButton(self):
+        gb.cooldown += gb.DEFAULT_COOLDOWN
+        self.playSound()
+
+    def resetButton(self):
+        for instance in self.baseValues:
+            instanceName = instance[0]
+            instanceValue = instance[1]
+            # resets all attributes stored in self.baseValues to what they were originally at the moment that self.baseValues was called last. (init)
+            setattr(self, gb.cammelCase(instanceName), instanceValue)
+        # then makes the soundwaves so that they can be properly rendered
+        self.makeSound()
+
+    def getData(self):
+        returnStr = ""
+
+        returnStr += f"-- SOUND SETTINGS --\n"
+        for instance in self.stateSettings:
+            name = instance[0]
+            convertedName = gb.cammelCase(name)
+
+            returnStr += f"{name}: {getattr(self, convertedName)}\n"
+        returnStr += f"\n"
+
+        returnStr += f"-- TOGGLES --\n"
+        returnStr += f"Draw Mode: {self.drawMode}\n"
+        returnStr += f"Controlling: {self.controllerState}\n\n"
+
+        returnStr += f"-- FREQUENCY --\n"
+        returnStr += f"{self.getFrequency()}\n\n"
+
+        return returnStr        
+
+
+    def update(self, keys, screen):
+        self.userInput(keys)
+        self.drawFullWave(screen)
+        self.drawMovingWave(screen)
+        self.text.update(screen, self.getData())
+
+class StringNote(Note):
+    def __init__(self,
+                 samplingRate : int = 44100,
+                 duration : float = 1.5,
+                 length : float = 10,
+                 n : float = 1,
+                 tension : float = 345.23,
+                 weight : float = 5.1,
+                 strength : float = 1,
+                 harmonics : list = None,
+                 lineStartColor : tuple = (50, 50, 255),
+                 lineEndColor : tuple = (50, 255, 0),
+                 circleColor : tuple = (255, 255, 255),
+                 drawMode : str = "Lines"):
+       
+        self.length = length
+        self.n = n
+        self.tension = tension
+        self.weight = weight # the linear density of the string
+        self.strength = strength
+
+        if harmonics == None:
+            self.setHarmonics()
+        else:
+            self.harmonics = harmonics
+
+        super().__init__(
+            samplingRate = samplingRate,
+            frequency = self.getFrequency(),
+            duration = duration,
+            circleColor = circleColor,
+            lineStartColor = lineStartColor,
+            lineEndColor = lineEndColor,
+            drawMode = drawMode
+        )
+
+        self.stateSettings = [
+            ["Length", pygame.K_l, 1.1, "*"],
+            ["N", pygame.K_n, .1, "+"],
+            ["Tension", pygame.K_t, 1.05, "*"],
+            ["Weight", pygame.K_w, 1.05, "*"],
+            ["Strength", pygame.K_s, .05, "+"],
+            ["Duration", pygame.K_d, 1.1, "*"]
+        ]
+
+        self.setBaseValues()
+
+    #MISC
+    def setHarmonics(self):
+        harmonicsLen = random.randint(1, 50) * 2
+        self.harmonics = [(.5 * (random.randint(0, 100)/100)) * (abs((i-(harmonicsLen/2))/(harmonicsLen))) if i % 2 == 0 else 0 for i in range(harmonicsLen)]
+        # self.harmonics = [1 * (abs((i-(len/2))/(len))) if i % 2 == 0 else 0 for i in range(len)]
+        # self.harmonics = [random.randint(0, 100)/100 for i in range(3)]
+        # self.harmonics = .75 * np.cos(25 * np.linspace(0, 1, 500))
+
+    #SOUND
+    def makeSound(self):
+        self.frames = int(self.duration * self.samplingRate)
+
+        timeFrame = np.linspace(0, self.duration, self.frames) # the time at i index for all frames
+
+        harmonics = self.harmonics.copy()
+        maxHarmonicVal = max(harmonics)
+        for i in range(len(harmonics)):
+            # if harmonics[i]/maxHarmonicVal > self.strength: # limits the values changed to only those that exceed the max strength threshold.
+                harmonics[i] = self.strength * maxHarmonicVal # just having this line alone gives more versatile and interesting results though.
+
+        self.wave = np.zeros_like(timeFrame)
+
+        frequency = self.getFrequency()
+        for i, amplitude in enumerate(harmonics):
+            harmonicFrequency = frequency * (i + 1)
+            self.wave += amplitude * np.cos(2 * np.pi * harmonicFrequency * timeFrame)
+
+        self.wave *= np.exp(-3 * timeFrame) # Exponential decay
+
+        self.wave = (32768 * self.wave).astype(np.int16)
+        stereoWave = np.asarray([self.wave, self.wave]).T
+        self.sound = pygame.sndarray.make_sound(stereoWave.copy())
+
+    def getFrequency(self):
+        return ((2*self.length/self.n))*math.sqrt(self.tension/self.weight)
+    
+    #USER INPUT
+    def resetButton(self):
+        gb.cooldown += gb.DEFAULT_COOLDOWN
+        super().resetButton()
+        self.setHarmonics()
+        self.makeSound()
+        self.lineStartColor = (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
+        self.lineEndColor = (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
