@@ -11,10 +11,13 @@ pygame.mixer.init()
 screen = pygame.display.set_mode((gb.SCREEN_X, gb.SCREEN_Y), pygame.RESIZABLE)
 clock = pygame.time.Clock()
 font = pygame.font.SysFont("Arial", 15)
+pygame.mixer.set_num_channels(64)
 
 doExit = False
 
-note = StringNote(drawMode="Lines", lineStartColor = (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)), lineEndColor = (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)))
+note = StringNote(drawMode="Lines", lineStartColor = (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)), lineEndColor = (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)), inputMethod="Laptop")
+
+note.keyboardInput()
 
 while not doExit:
     delta = (clock.tick(gb.FPS) / 1000)

@@ -4,7 +4,10 @@ import math
 import globals as gb
 import time
 import random
+import mido
+import threading
 from text import Text
+from frequencies import freqList as fq
 
 #Mwroc Camp
 
@@ -16,29 +19,39 @@ class Note:
                  samplingRate : int = 44100,
                  frequency : float = 440,
                  duration : float = 1.5,
+                 strength : float = 1,
                  lineStartColor : tuple = (50, 50, 255),
                  lineEndColor : tuple = (50, 255, 0),
                  circleColor : tuple = (255, 255, 255),
-                 drawMode : str = "Lines"):
+                 drawMode : str = "Lines",
+                 inputMethod : str = "Laptop"):
         
         self.samplingRate = samplingRate
         self.frequency = frequency
         self.duration = duration
+        self.strength = strength
         self.lineStartColor = lineStartColor
         self.lineEndColor = lineEndColor
         self.circleColor = circleColor
         self.drawMode = drawMode
+        self.inputMethod = inputMethod
+        self.currentChannel = 0
+        self.channelMax = 64
+
+        self.mult = 1
 
         self.frames = int(self.duration * self.samplingRate)
         self.sound = None
         self.wave = None
+        self.defaultWave = None
         self.startTime = None
         self.text = Text((10, 10), True)
         self.controllerState = "Weight"
 
         self.stateSettings = [
             ["Frequency", pygame.K_f, 1.1, "*"],
-            ["Duration", pygame.K_d, 1.1, "*"]
+            ["Duration", pygame.K_d, 1.1, "*"],
+            ["Strength", pygame.K_s, .1, "+"],
         ]
 
         self.drawModes = [
@@ -55,7 +68,7 @@ class Note:
         self.baseValues = [[self.stateSettings[i][0], getattr(self, gb.cammelCase(self.stateSettings[i][0]))] for i in range(len(self.stateSettings))]
 
     #SOUND
-    def makeSound(self):
+    def makeSound(self, frequency : float = None):
         """
             ## makeSound()
             Generates the sound wave of the selected note instance
@@ -63,8 +76,12 @@ class Note:
 
         self.frames = int(self.duration * self.samplingRate) # total instances to account for
 
-        rawWave = np.cos(2 * np.pi * self.getFrequency() * np.linspace(0, self.duration, self.frames)) # raw waveform
-        rawWave *= np.linspace(1, 0, self.frames) # basic linear fade
+        if frequency == None:
+            frequency = self.getFrequency()
+        else:
+            self.frequency = frequency
+        rawWave = np.cos(2 * np.pi * frequency * np.linspace(0, self.duration, self.frames)) * (self.strength if self.strength <= 1 else 1) # raw waveform
+        rawWave *= np.concatenate((np.linspace(0, 1, 100), np.linspace(1, 0, self.frames - 100))) # basic linear fade
 
         self.wave = rawWave # sets self.wave to the actual generated wave
         self.wave = (32768 * self.wave).astype(np.int16) # maps the wave to audio min max of a 16 bit int (32768)
@@ -102,7 +119,7 @@ class Note:
 
         screenSize = pygame.math.Vector2(pygame.display.get_window_size()) # for scaling purposes
         offset = screenSize.y/6 # Normalizes offsets to relative screen size
-        reducedWave = self.wave[::int(math.ceil(self.frames/screenSize.x))] # Reduce the amount of drawn instances to the width of the screen in pixels
+        reducedWave = self.wave[::int(math.ceil(self.frames/(screenSize.x/1)))] # Reduce the amount of drawn instances to the width of the screen in pixels
 
         normalizedWave = reducedWave / np.max(np.abs(reducedWave)) * offset # Normalizes the min and max values of the wave (visually) to that of 1x the offset scale.
         #relative positioning lists for each instance
@@ -258,12 +275,56 @@ class Note:
 
         return returnStr        
 
+    def keyboardInput(self):
+        def handle_midi_input(port):
+            print(f"Listening for MIDI input on '{port.name}'...")
+            buffer = []
+            while True:
+                message = port.receive()
+                if message.type == 'note_on' and message.velocity > 0:
+                    buffer.append(message)
 
-    def update(self, keys, screen):
+                if message.type == 'control_change':
+                    if message.control == 64:  # Sustain pedal
+                        if message.value > 0:
+                            self.mult = 2.5
+                        else:
+                            self.mult = 1
+                    if message.control == 66:
+                        if message.value > 0:
+                            if gb.cooldown == 0:
+                                gb.cooldown += gb.DEFAULT_COOLDOWN
+                                self.resetButton()
+
+                if len(buffer) > 0:
+                    for msg in buffer:
+                        self.strength = msg.velocity / 100
+                        self.frequency = fq[msg.note]
+                        self.duration = (msg.velocity / 100) * self.mult
+                        print(self.mult, self.duration)
+                        self.makeSound(fq[msg.note])
+                        pygame.mixer.Channel(self.currentChannel).play(self.sound)
+                        self.currentChannel += 1
+                        if self.currentChannel == self.channelMax:
+                            self.currentChannel = 0
+                    buffer.clear()
+
+               
+
+        # if len(mido.get_input_names()) != 0:
+        port = mido.open_input(mido.get_input_names()[0])
+        listener_thread = threading.Thread(target=handle_midi_input, args=(port,))
+        listener_thread.daemon = True
+        listener_thread.start()
+        return listener_thread
+
+    def update(self, keys, screen = None):
         self.userInput(keys)
-        self.drawFullWave(screen)
-        self.drawMovingWave(screen)
-        self.text.update(screen, self.getData())
+        # if len(mido.get_input_names()) != 0:
+        if screen != None:
+            self.drawFullWave(screen)
+            self.drawMovingWave(screen)
+            self.text.update(screen, self.getData())
 
 class StringNote(Note):
     def __init__(self,
@@ -278,7 +339,8 @@ class StringNote(Note):
                  lineStartColor : tuple = (50, 50, 255),
                  lineEndColor : tuple = (50, 255, 0),
                  circleColor : tuple = (255, 255, 255),
-                 drawMode : str = "Lines"):
+                 drawMode : str = "Lines",
+                 inputMethod : str = "Laptop"):
        
         self.length = length
         self.n = n
@@ -298,7 +360,8 @@ class StringNote(Note):
             circleColor = circleColor,
             lineStartColor = lineStartColor,
             lineEndColor = lineEndColor,
-            drawMode = drawMode
+            drawMode = drawMode,
+            inputMethod = inputMethod
         )
 
         self.stateSettings = [
@@ -314,36 +377,62 @@ class StringNote(Note):
 
     #MISC
     def setHarmonics(self):
-        harmonicsLen = random.randint(1, 50) * 2
+        harmonicsLen = random.randint(3, 30) * 2
+        # harmonicsLen = 5 * 2
+        # len = 5
         self.harmonics = [(.5 * (random.randint(0, 100)/100)) * (abs((i-(harmonicsLen/2))/(harmonicsLen))) if i % 2 == 0 else 0 for i in range(harmonicsLen)]
         # self.harmonics = [1 * (abs((i-(len/2))/(len))) if i % 2 == 0 else 0 for i in range(len)]
         # self.harmonics = [random.randint(0, 100)/100 for i in range(3)]
         # self.harmonics = .75 * np.cos(25 * np.linspace(0, 1, 500))
 
     #SOUND
-    def makeSound(self):
+    def makeSound(self, frequency : float = None):
         self.frames = int(self.duration * self.samplingRate)
 
         timeFrame = np.linspace(0, self.duration, self.frames) # the time at i index for all frames
 
         harmonics = self.harmonics.copy()
         maxHarmonicVal = max(harmonics)
-        for i in range(len(harmonics)):
+        # for i in range(len(harmonics)):
             # if harmonics[i]/maxHarmonicVal > self.strength: # limits the values changed to only those that exceed the max strength threshold.
-                harmonics[i] = self.strength * maxHarmonicVal # just having this line alone gives more versatile and interesting results though.
+                # harmonics[i] = self.strength * maxHarmonicVal # just having this line alone gives more versatile and interesting results though.
 
         self.wave = np.zeros_like(timeFrame)
 
-        frequency = self.getFrequency()
+        if frequency == None:
+            frequency = self.getFrequency()
+        else:
+            self.frequency = frequency
         for i, amplitude in enumerate(harmonics):
             harmonicFrequency = frequency * (i + 1)
-            self.wave += amplitude * np.cos(2 * np.pi * harmonicFrequency * timeFrame)
+            self.wave += amplitude * np.cos(2 * np.pi * harmonicFrequency * timeFrame) * (self.strength if self.strength <= 1 else 1)
 
-        self.wave *= np.exp(-3 * timeFrame) # Exponential decay
+        # self.wave *= np.exp(-3 * timeFrame) # Exponential decay
+        self.wave *= np.concatenate((np.linspace(0, 1, 100), np.linspace(1, 0, self.frames - 100)))
 
         self.wave = (32768 * self.wave).astype(np.int16)
         stereoWave = np.asarray([self.wave, self.wave]).T
         self.sound = pygame.sndarray.make_sound(stereoWave.copy())
+
+    # def makeSound(self, frequency : float = None):
+    #     self.frames = int(self.duration * self.samplingRate)
+
+    #     timeFrame = np.linspace(0, self.duration, self.frames)
+
+    #     harmonics = self.harmonics.copy()
+
+    #     self.wave = np.zeros_like(timeFrame)
+
+    #     if frequency == None:
+    #         frequency = self.getFrequency()
+
+    #     for i, amplitude in enumerate(harmonics):
+    #         harmonicFrequency = frequency * (i + 1)
+    #         self.wave += amplitude * np.cos(2 * np.pi * harmonicFrequency * timeFrame) * self.strength * (i/self.frames)
+
+    #     self.wave = (32768 * self.wave).astype(np.int16)
+    #     stereoWave = np.asarray([self.wave, self.wave]).T
+    #     self.sound = pygame.sndarray.make_sound(stereoWave.copy())
 
     def getFrequency(self):
         return ((2*self.length/self.n))*math.sqrt(self.tension/self.weight)
